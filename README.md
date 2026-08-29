@@ -35,29 +35,78 @@ file that is never committed.
 pip install -r requirements.txt
 ```
 
-**2. Create your config**
+**2. Create your settings file**
 
-Copy `.env.example` to `.env` and fill it in:
+All your logins live in one file on your own computer, called `.env`. Nothing is
+typed into Telegram, and nothing is sent anywhere except to the school's own
+website when the bot logs in for you.
 
-```bash
-cp .env.example .env
+Make the file by copying the example:
+
+```
+copy .env.example .env
 ```
 
-- `TELEGRAM_TOKEN` — message [@BotFather](https://t.me/BotFather) on Telegram, send `/newbot`, and copy the token it gives you.
-- `WEBTOP_USERNAME` / `WEBTOP_PASSWORD` — the same login you use on the Webtop website.
-- `WEBTOP_DATA` — leave empty first. If login fails, open the Webtop site in your browser, press F12 → Network tab → log in → find the login request → copy the `data` field from the request body.
-- `ALLOWED_CHAT_IDS` — see step 3.
+On macOS or Linux use `cp .env.example .env` instead.
 
-**3. Lock the bot to your own chat**
+**3. Put your details in that file**
 
-Start the bot (`python bot.py`), send it `/myid` in Telegram, and it replies with
-your chat ID. Put that number in `ALLOWED_CHAT_IDS` in `.env` and restart.
+Open `.env` in a text editor (Notepad is fine). You'll see a line for each
+setting. Type your value straight after the `=` sign — no quotes, no spaces
+around the `=`.
+
+| Line in the file | What to type there | Where to get it |
+|---|---|---|
+| `TELEGRAM_TOKEN=` | Your bot's token | Message [@BotFather](https://t.me/BotFather) on Telegram, send `/newbot`, follow the prompts, copy the long code it gives you |
+| `WEBTOP_USERNAME=` | **Your Webtop username** | Exactly what you type on the Webtop/SmartSchool website when you log in |
+| `WEBTOP_PASSWORD=` | **Your Webtop password** | The same password you use on that website |
+| `ALLOWED_CHAT_IDS=` | Leave empty for now | Filled in at step 5 |
+| `WEBTOP_DATA=` | Leave empty | Only needed if login fails — see below |
+| `WEBTOP_BASE_URL=` | Leave empty | Only for schools on a non-default server |
+
+So a finished file looks something like this:
+
+```
+TELEGRAM_TOKEN=8123456789:AAH1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P
+WEBTOP_USERNAME=my_webtop_login
+WEBTOP_PASSWORD=my_webtop_password
+WEBTOP_DATA=
+WEBTOP_BASE_URL=
+ALLOWED_CHAT_IDS=
+```
+
+Save and close the file.
+
+> **Windows tip:** Notepad likes to save as `.env.txt`. In the Save dialog set
+> *Save as type* to **All Files**, or the bot won't find your settings.
+
+> **If login fails** with a message about credentials: your school may need an
+> extra key. Open the Webtop site in your browser, press `F12` → **Network**
+> tab → log in normally → click the `LoginByUserNameAndPassword` request →
+> copy the `data` value from the request body into `WEBTOP_DATA=`.
+
+**4. Start the bot for the first time**
+
+```
+python bot.py
+```
+
+Leave this window open. If your username and password are right, it prints
+`Login OK` with the student's name.
+
+**5. Lock the bot to your own chat**
+
+With the bot running, open Telegram, find your bot, and send it `/myid`.
+It replies with your chat ID — a number like `123456789`.
+
+Put that number after `ALLOWED_CHAT_IDS=` in your `.env` file, save it, then
+stop the bot (`Ctrl+C`) and start it again.
 
 > **This step is not optional.** Until you set it, the bot refuses every command
 > except `/myid`. That is deliberate — without it, anyone who found your bot
 > could read the student's data.
 
-**4. Run it**
+**6. Run it for real**
 
 ```bash
 python bot.py
@@ -82,6 +131,9 @@ On Windows you can install it as a background task that starts at login:
 
 ## Security
 
+- **The bot never asks for your password in Telegram.** It is read once from
+  `.env` on your own machine. If anything claiming to be this bot asks you to
+  type a password into a chat, it is not this bot.
 - `.env`, `.device_id`, `logs/` and `notification_state.json` are gitignored. **Never commit them** — they contain your credentials and the student's real data.
 - Access is **fail-closed**: an empty `ALLOWED_CHAT_IDS` denies everyone rather than allowing everyone.
 - Every update passes a single authorization gate before any handler runs, with per-chat rate limiting.
