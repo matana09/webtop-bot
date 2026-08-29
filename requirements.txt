@@ -1,0 +1,6 @@
+python-telegram-bot[job-queue]>=20.7
+pywebtop
+python-dotenv
+httpx>=0.25,<1.0
+Pillow>=10.0
+python-bidi>=0.4.2

@@ -1,0 +1,17 @@
+# Secrets — never commit
+.env
+.device_id
+
+# Local runtime state (contains real school data)
+notification_state.json
+logs/
+
+# Debug scratch scripts
+debug_*.py
+test_login.py
+
+# Tooling / local editor state
+.claude/
+__pycache__/
+*.pyc
+*.pyo
