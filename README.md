@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](#requirements)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/matana09/webtop-bot/pulls)
 
-A Telegram bot that pulls a student's data from the Israeli **SmartSchool / Webtop**
+A Telegram bot that pulls a student's data from **SmartSchool / Webtop**
 school system and shows it in Telegram: schedule, homework, grades, discipline
 events and school messages — plus a daily summary and a weekly schedule image.
 
