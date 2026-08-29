@@ -1,5 +1,11 @@
 # Webtop Telegram Bot
 
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![python-telegram-bot](https://img.shields.io/badge/python--telegram--bot-22.7-26A5E4.svg)](https://python-telegram-bot.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](#requirements)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/matana09/webtop-bot/pulls)
+
 A Telegram bot that pulls a student's data from the Israeli **SmartSchool / Webtop**
 school system and shows it in Telegram: schedule, homework, grades, discipline
 events and school messages — plus a daily summary and a weekly schedule image.
