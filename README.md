@@ -67,9 +67,9 @@ around the `=`.
 So a finished file looks something like this:
 
 ```
-TELEGRAM_TOKEN=8123456789:AAH1a2B3c4D5e6F7g8H9i0J1k2L3m4N5o6P
-WEBTOP_USERNAME=my_webtop_login
-WEBTOP_PASSWORD=my_webtop_password
+TELEGRAM_TOKEN=paste_the_token_from_BotFather_here
+WEBTOP_USERNAME=your_webtop_username
+WEBTOP_PASSWORD=your_webtop_password
 WEBTOP_DATA=
 WEBTOP_BASE_URL=
 ALLOWED_CHAT_IDS=
