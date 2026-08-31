@@ -5,7 +5,8 @@ from telegram.ext import ContextTypes
 from handlers.auth import restricted
 from handlers.menu import MAIN_MENU
 from webtop_service import webtop
-from schedule_overrides import OVERRIDES as _SCHEDULE_OVERRIDES
+import schedule_overrides as _sched_overrides
+import schedule_times as _sched_times
 import main_screen_state
 
 ISRAELI_DAYS = {
@@ -14,182 +15,98 @@ ISRAELI_DAYS = {
 }
 _SKIP = {"הפסקה", ""}
 
-# Fixed school bell schedule (hour_num → (start, end))
-_HOUR_TIMES = {
-    1: ("8:00",  "8:40"),
-    2: ("8:40",  "9:25"),
-    3: ("10:05", "10:55"),
-    4: ("10:55", "11:50"),
-    5: ("12:00", "12:45"),
-    6: ("12:45", "13:30"),
-}
-
-# Breaks inserted AFTER a given hour: (after_hour, start, end, label)
-_BREAKS_AFTER = {
-    2: [
-        ("9:25",  "9:45",  "🍽️ הפסקת אוכל"),
-        ("9:45",  "10:05", "🏃 הפסקה"),
-    ],
-    4: [
-        ("11:50", "12:00", "🏃 הפסקה"),
-    ],
-}
-
-_FRIDAY_IDX = 6
-
-
-def _hour_times_for_day(day_idx: int) -> dict[int, tuple[str, str]]:
-    """Return _HOUR_TIMES adjusted for the given day (Friday ends earlier)."""
-    times = dict(_HOUR_TIMES)
-    if day_idx == _FRIDAY_IDX:
-        times[4] = (times[4][0], "11:40")
-    return times
-
-
-def _breaks_after_for_day(day_idx: int, hour_num: int) -> list[tuple[str, str, str]]:
-    """Return breaks after hour_num, adjusted for the given day (no break on Friday after hour 4)."""
-    if day_idx == _FRIDAY_IDX and hour_num == 4:
-        return []
-    return _BREAKS_AFTER.get(hour_num, [])
-
 
 def _today_day_index() -> int:
     iso = date.today().isoweekday()  # Mon=1…Sun=7
     return iso % 7 + 1              # Sun→1, Mon→2…Fri→6
 
 
-async def _today_schedule_text() -> str:
+async def _lessons_for_day(day_idx: int) -> dict[int, tuple[str, str, str]]:
+    """hour_num → (subject, teacher, topic) for one school day.
+
+    API data first; the printed timetable in schedule_overrides then wins for
+    any day it covers. Webtop blocks the schedule view between school years, so
+    the manual sheet has to stand on its own when the API returns nothing.
+    """
+    hour_lessons: dict[int, tuple[str, str, str]] = {}
     try:
         data = await webtop.get_schedule(week_index=0)
-        if not isinstance(data, dict) or not data.get("status"):
-            return ""
-        today_idx = _today_day_index()
-        day_name  = ISRAELI_DAYS.get(today_idx, "")
-        today_str = date.today().strftime("%d/%m/%Y")
-
-        for day in data.get("data") or []:
-            if day.get("dayIndex") != today_idx:
-                continue
-
-            # Build hour→(subject, teacher) map
-            hour_lessons: dict[int, tuple[str, str]] = {}
-            for slot in day.get("hoursData") or []:
-                hour_num = slot.get("hour")
-                if not isinstance(hour_num, int):
+        if isinstance(data, dict) and data.get("status"):
+            for day in data.get("data") or []:
+                if day.get("dayIndex") != day_idx:
                     continue
-                for lesson in slot.get("scheduale") or []:
-                    subject = (lesson.get("subject") or "").strip()
-                    if subject in _SKIP:
+                for slot in day.get("hoursData") or []:
+                    hour_num = slot.get("hour")
+                    if not isinstance(hour_num, int):
                         continue
-                    first   = lesson.get("teacherPrivateName") or ""
-                    last    = lesson.get("teacherLastName") or ""
-                    teacher = f"{first} {last}".strip()
-                    hour_lessons[hour_num] = (subject, teacher)
-                    break
-
-            # Apply manual overrides for this day
-            if today_idx in _SCHEDULE_OVERRIDES:
-                for hour_num, (subject, teacher) in _SCHEDULE_OVERRIDES[today_idx].items():
-                    hour_lessons[hour_num] = (subject, teacher)
-
-            if not hour_lessons:
-                return ""
-
-            lines = [f"🗓️ <b>היום {html.escape(today_str)} — יום {html.escape(day_name)}</b>\n"]
-
-            hour_times = _hour_times_for_day(today_idx)
-            last_hour = max(hour_lessons.keys())
-
-            for hour_num in sorted(hour_lessons.keys()):
-                subject, teacher = hour_lessons[hour_num]
-                start, end = hour_times.get(hour_num, ("", ""))
-                teacher_str = ""
-                time_str = f"{start} – {end}" if start else ""
-                lines.append(
-                    f"<b>{time_str}</b> שיעור {hour_num} — {html.escape(subject)}{teacher_str}"
-                )
-
-                # Insert breaks after this hour
-                for b_start, b_end, b_label in _breaks_after_for_day(today_idx, hour_num):
-                    lines.append(f"<b>{b_end} – {b_start}</b> {b_label}")
-
-            # End of day
-            _, day_end = hour_times.get(last_hour, ("", ""))
-            if day_end:
-                lines.append(f"\n🔔 <b>סיום היום: {day_end}</b>")
-
-            return "\n".join(lines)
-
+                    for lesson in slot.get("scheduale") or []:
+                        subject = (lesson.get("subject") or "").strip()
+                        if subject in _SKIP:
+                            continue
+                        first = lesson.get("teacherPrivateName") or ""
+                        last  = lesson.get("teacherLastName") or ""
+                        hour_lessons[hour_num] = (subject, f"{first} {last}".strip(), "")
+                        break
     except Exception:
-        pass
-    return ""
+        pass  # the manual sheet below still stands
+
+    manual = _sched_overrides.for_day(day_idx)
+    if manual is not None:
+        hour_lessons = manual
+    return hour_lessons
+
+
+def _format_day(day_idx: int, hour_lessons: dict[int, tuple[str, str, str]],
+                title: str, end_label: str) -> str:
+    """Render one day: a line per lesson, breaks between, end-of-day footer."""
+    if not hour_lessons:
+        return ""
+
+    lines = [f"{title}\n"]
+    hour_times = _sched_times.hour_times_for_day(day_idx)
+    last_hour  = max(hour_lessons)
+
+    for hour_num in sorted(hour_lessons):
+        subject, _, topic = hour_lessons[hour_num]
+        start, end = hour_times.get(hour_num, ("", ""))
+        time_str = f"{start} – {end}" if start else ""
+        subject_str = html.escape(subject)
+        if topic:
+            subject_str += f" ({html.escape(topic)})"
+        lines.append(f"<b>{time_str}</b> שיעור {hour_num} — {subject_str}")
+        if hour_num == last_hour:
+            continue
+        for b_start, b_end, b_label in _sched_times.breaks_after_for_day(day_idx, hour_num):
+            lines.append(f"<b>{b_end} – {b_start}</b> {b_label}")
+
+    _, day_end = hour_times.get(last_hour, ("", ""))
+    if day_end:
+        lines.append(f"\n🔔 <b>{end_label}: {day_end}</b>")
+
+    return "\n".join(lines)
+
+
+async def _today_schedule_text() -> str:
+    today_idx = _today_day_index()
+    if today_idx == 7:
+        return ""
+    today = date.today()
+    title = (f"🗓️ <b>היום {html.escape(today.strftime('%d/%m/%Y'))} — "
+             f"יום {html.escape(ISRAELI_DAYS.get(today_idx, ''))}</b>")
+    return _format_day(today_idx, await _lessons_for_day(today_idx), title, "סיום היום")
 
 
 async def _tomorrow_schedule_text() -> str:
-    """Return formatted schedule for tomorrow (used in 19:00 evening message)."""
-    try:
-        tomorrow     = date.today() + timedelta(days=1)
-        tomorrow_iso = tomorrow.isoweekday()          # Mon=1…Sun=7
-        tomorrow_idx = tomorrow_iso % 7 + 1           # Sun=1…Fri=6, Sat=7
+    """Formatted schedule for tomorrow (used in the 19:00 evening message)."""
+    tomorrow     = date.today() + timedelta(days=1)
+    tomorrow_idx = tomorrow.isoweekday() % 7 + 1   # Sun=1…Fri=6, Sat=7
 
-        # No school tomorrow
-        if tomorrow_idx == 7:
-            return "✡️ <b>מחר שבת — יום מנוחה 😊</b>"
+    if tomorrow_idx == 7:
+        return "✡️ <b>מחר שבת — יום מנוחה 😊</b>"
 
-        day_name     = ISRAELI_DAYS.get(tomorrow_idx, "")
-        tomorrow_str = tomorrow.strftime("%d/%m/%Y")
-
-        data = await webtop.get_schedule(week_index=0)
-        if not isinstance(data, dict) or not data.get("status"):
-            return ""
-
-        for day in data.get("data") or []:
-            if day.get("dayIndex") != tomorrow_idx:
-                continue
-
-            hour_lessons: dict[int, tuple[str, str]] = {}
-            for slot in day.get("hoursData") or []:
-                hour_num = slot.get("hour")
-                if not isinstance(hour_num, int):
-                    continue
-                for lesson in slot.get("scheduale") or []:
-                    subject = (lesson.get("subject") or "").strip()
-                    if subject in _SKIP:
-                        continue
-                    first   = lesson.get("teacherPrivateName") or ""
-                    last    = lesson.get("teacherLastName") or ""
-                    hour_lessons[hour_num] = (f"{first} {last}".strip() and subject or subject, "")
-                    break
-
-            # Apply manual overrides
-            if tomorrow_idx in _SCHEDULE_OVERRIDES:
-                for hour_num, (subject, teacher) in _SCHEDULE_OVERRIDES[tomorrow_idx].items():
-                    hour_lessons[hour_num] = (subject, teacher)
-
-            if not hour_lessons:
-                return ""
-
-            lines = [f"🗓️ <b>מחר {html.escape(tomorrow_str)} — יום {html.escape(day_name)}</b>\n"]
-            hour_times = _hour_times_for_day(tomorrow_idx)
-            last_hour = max(hour_lessons.keys())
-
-            for hour_num in sorted(hour_lessons.keys()):
-                subject, _ = hour_lessons[hour_num]
-                start, end = hour_times.get(hour_num, ("", ""))
-                time_str = f"{start} – {end}" if start else ""
-                lines.append(f"<b>{time_str}</b> שיעור {hour_num} — {html.escape(subject)}")
-                for b_start, b_end, b_label in _breaks_after_for_day(tomorrow_idx, hour_num):
-                    lines.append(f"<b>{b_end} – {b_start}</b> {b_label}")
-
-            _, day_end = hour_times.get(last_hour, ("", ""))
-            if day_end:
-                lines.append(f"\n🔔 <b>סיום מחר: {day_end}</b>")
-
-            return "\n".join(lines)
-
-    except Exception:
-        pass
-    return ""
+    title = (f"🗓️ <b>מחר {html.escape(tomorrow.strftime('%d/%m/%Y'))} — "
+             f"יום {html.escape(ISRAELI_DAYS.get(tomorrow_idx, ''))}</b>")
+    return _format_day(tomorrow_idx, await _lessons_for_day(tomorrow_idx), title, "סיום מחר")
 
 
 def build_start_screen(schedule_text: str = "", prefix: str = "") -> str:

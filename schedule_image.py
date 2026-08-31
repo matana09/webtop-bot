@@ -6,6 +6,8 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 from bidi.algorithm import get_display
 from schedule_overrides import apply as _apply_overrides
+import schedule_times as _sched_times
+from schedule_times import HOUR_TIMES as _HOUR_TIMES
 
 
 def _rtl(text: str) -> str:
@@ -17,16 +19,6 @@ def _rtl(text: str) -> str:
 _DAY_LABELS = {1: "א׳", 2: "ב׳", 3: "ג׳", 4: "ד׳", 5: "ה׳", 6: "ו׳"}
 _SKIP_SUBJECTS = {"הפסקה", ""}
 
-# Lesson bell times (hour_num → (start, end))
-_HOUR_TIMES = {
-    1: ("8:00",  "8:40"),
-    2: ("8:40",  "9:25"),
-    3: ("10:05", "10:55"),
-    4: ("10:55", "11:50"),
-    5: ("12:00", "12:45"),
-    6: ("12:45", "13:30"),
-}
-
 # Colors
 _C_BG        = (248, 249, 250)
 _C_HEADER_BG = (30,  58,  95)
@@ -37,6 +29,7 @@ _C_HOUR_BG   = (220, 228, 240)
 _C_BORDER    = (190, 205, 220)
 _C_SUBJECT   = (15,  30,  60)
 _C_TEACHER   = (90,  105, 130)
+_C_TOPIC     = (70,  95,  140)
 _C_EMPTY     = (200, 210, 225)
 _C_TIME      = (70,  90,  130)
 
@@ -45,7 +38,7 @@ _HOUR_W   = 90   # wider to fit times
 _DAY_W    = 130
 _TITLE_H  = 44
 _HEADER_H = 52
-_ROW_H    = 72
+_ROW_H    = 84
 _PADDING  = 6
 
 
@@ -81,8 +74,8 @@ def _wrap(text: str, max_chars: int) -> list[str]:
 
 # ── public API ────────────────────────────────────────────────────────────────
 
-def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes:
-    days_raw = data.get("data") or []
+def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes | None:
+    days_raw = (data.get("data") or []) if isinstance(data, dict) else []
 
     # Build matrix: hour_num -> day_idx -> (subject, teacher)
     matrix: dict[int, dict[int, tuple[str, str]]] = {}
@@ -111,6 +104,9 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes:
 
     # RTL layout: days sorted descending → ו׳ leftmost, א׳ rightmost (before hour col)
     # Hour column on the RIGHT (x = n_days * _DAY_W)
+    if not matrix:
+        return None
+
     sorted_days  = sorted(day_indices, reverse=True)  # [6,5,4,3,2,1]
     sorted_hours = sorted(matrix.keys())
 
@@ -129,6 +125,7 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes:
     f_time    = _font(11, bold=False)
     f_subject = _font(15, bold=True)
     f_teacher = _font(13, bold=False)
+    f_topic   = _font(12, bold=False)
 
     DAYS_W = _DAY_W * n_days   # x where hour column starts (rightmost)
 
@@ -169,13 +166,13 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes:
         draw.rectangle([DAYS_W, y, W, y + _ROW_H], fill=_C_HOUR_BG)
         start_t, end_t = _HOUR_TIMES.get(hour, ("", ""))
         # Hour number in upper area
-        draw.text((hx, y + 18), str(hour),
+        draw.text((hx, y + 24), str(hour),
                   fill=_C_SUBJECT, font=f_hour, anchor="mm")
         # Times below
         if start_t and end_t:
-            draw.text((hx, y + 38), f"{start_t}",
+            draw.text((hx, y + 46), f"{start_t}",
                       fill=_C_TIME, font=f_time, anchor="mm")
-            draw.text((hx, y + 52), f"{end_t}",
+            draw.text((hx, y + 60), f"{end_t}",
                       fill=_C_TIME, font=f_time, anchor="mm")
 
         # Divider before hour column
@@ -189,33 +186,33 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes:
             if i > 0:
                 draw.line([x, y, x, y + _ROW_H], fill=_C_BORDER, width=1)
 
-            # Friday's hour-4 lesson ends earlier (11:40, no break after)
-            friday_note = (d == 6 and hour == 4)
+            # Friday's last lesson ends early — say so instead of naming the teacher
+            friday_note = (d == _sched_times.FRIDAY_IDX
+                           and hour == _sched_times.FRIDAY_LAST_HOUR
+                           and _sched_times.FRIDAY_ENDS_AT)
 
             cell = matrix.get(hour, {}).get(d)
             if cell:
-                subject, teacher = cell
-                show_teacher = bool(teacher) and not friday_note
-                lines = _wrap(subject, 8)
-                if len(lines) == 1:
-                    sy = y + _ROW_H // 2 - (10 if (show_teacher or friday_note) else 0)
-                    draw.text((cx, sy), _rtl(lines[0]),
-                              fill=_C_SUBJECT, font=f_subject, anchor="mm")
-                else:
-                    draw.text((cx, y + _PADDING + 14), _rtl(lines[0]),
-                              fill=_C_SUBJECT, font=f_subject, anchor="mm")
-                    draw.text((cx, y + _PADDING + 30), _rtl(lines[1]),
-                              fill=_C_SUBJECT, font=f_subject, anchor="mm")
-                if show_teacher:
-                    draw.text((cx, y + _ROW_H - _PADDING - 10), _rtl(teacher),
-                              fill=_C_TEACHER, font=f_teacher, anchor="mm")
-            else:
-                draw.text((cx, y + _ROW_H // 2 - (10 if friday_note else 0)), "—",
-                          fill=_C_EMPTY, font=f_subject, anchor="mm")
+                subject, teacher, topic = cell
+                # (text, font, colour, line height) stacked and centred in the cell
+                stack = [(ln, f_subject, _C_SUBJECT, 17) for ln in _wrap(subject, 8)]
+                if topic:
+                    stack += [(ln, f_topic, _C_TOPIC, 14) for ln in _wrap(topic, 20)]
+                if teacher and not friday_note:
+                    stack.append((teacher, f_teacher, _C_TEACHER, 15))
+                if friday_note:
+                    stack.append((f"עד {_sched_times.FRIDAY_ENDS_AT}",
+                                  f_time, _C_TIME, 14))
 
-            if friday_note:
-                draw.text((cx, y + _ROW_H - _PADDING - 10), _rtl("עד 11:40"),
-                          fill=_C_TIME, font=f_time, anchor="mm")
+                block_h = sum(lh for *_, lh in stack)
+                ty = y + (_ROW_H - block_h) // 2
+                for text, font, colour, lh in stack:
+                    draw.text((cx, ty + lh // 2), _rtl(text),
+                              fill=colour, font=font, anchor="mm")
+                    ty += lh
+            else:
+                draw.text((cx, y + _ROW_H // 2), "—",
+                          fill=_C_EMPTY, font=f_subject, anchor="mm")
 
         draw.line([0, y + _ROW_H, W, y + _ROW_H], fill=_C_BORDER, width=1)
 

@@ -42,8 +42,12 @@ async def schedule_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         data = await webtop.get_schedule(week_index=week_index)
 
-        if _IMAGE_SUPPORT and isinstance(data, dict) and data.get("status"):
-            img_bytes = generate_schedule_image(data, week_label=week_label)
+        # The manual timetable alone is enough to draw the image — Webtop blocks
+        # the schedule view between school years and then returns status=false.
+        img_bytes = (generate_schedule_image(data, week_label=week_label)
+                     if _IMAGE_SUPPORT else None)
+
+        if img_bytes:
             if is_photo:
                 # Replace existing photo in-place — no delete, no duplicate
                 await context.bot.edit_message_media(
