@@ -77,7 +77,7 @@ def _format_day(day_idx: int, hour_lessons: dict[int, tuple[str, str, str]],
         if hour_num == last_hour:
             continue
         for b_start, b_end, b_label in _sched_times.breaks_after_for_day(day_idx, hour_num):
-            lines.append(f"<b>{b_end} – {b_start}</b> {b_label}")
+            lines.append(f"<b>{b_start} – {b_end}</b> {b_label}")
 
     _, day_end = hour_times.get(last_hour, ("", ""))
     if day_end:
