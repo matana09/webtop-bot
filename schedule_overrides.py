@@ -23,7 +23,17 @@ OVERRIDES: dict[int, dict[int, tuple[str, ...]]] = {
 
 
 def normalize(cell: tuple[str, ...]) -> tuple[str, str, str]:
-    """Pad a (subject, teacher[, topic]) entry to a fixed 3-tuple."""
+    """Pad a (subject, teacher[, topic]) entry to a fixed 3-tuple.
+
+    OVERRIDES is edited by hand, so the two easy slips are checked here: a
+    bare string would otherwise unpack into its own characters, and a
+    1-tuple would raise somewhere far away from the table you mistyped.
+    """
+    if isinstance(cell, str) or not 2 <= len(cell) <= 3:
+        raise ValueError(
+            f"OVERRIDES entry must be (subject, teacher) or "
+            f"(subject, teacher, topic); got {cell!r}"
+        )
     subject, teacher, *rest = cell
     return subject, teacher, (rest[0] if rest else "")
 

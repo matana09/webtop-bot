@@ -43,7 +43,11 @@ def hour_times_for_day(day_idx: int) -> dict[int, tuple[str, str]]:
 
 
 def breaks_after_for_day(day_idx: int, hour_num: int) -> list[tuple[str, str, str]]:
-    """Breaks after hour_num — nothing follows Friday's last lesson."""
-    if day_idx == FRIDAY_IDX and hour_num == FRIDAY_LAST_HOUR:
+    """Breaks after hour_num — nothing follows Friday's last lesson.
+
+    Gated on FRIDAY_ENDS_AT like hour_times_for_day is, so clearing it turns
+    off the whole Friday exception rather than half of it.
+    """
+    if day_idx == FRIDAY_IDX and hour_num == FRIDAY_LAST_HOUR and FRIDAY_ENDS_AT:
         return []
     return BREAKS_AFTER.get(hour_num, [])
