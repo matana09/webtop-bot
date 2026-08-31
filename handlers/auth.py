@@ -14,6 +14,10 @@ handler that calls another handler does not spend two slots.
 
 Both layers are fail-closed: an empty or misconfigured ALLOWED_CHAT_IDS denies
 everyone rather than allowing everyone.
+
+The gate also logs each accepted update. It is the only place every update is
+guaranteed to pass through, so one line here replaces a logging call in every
+handler.
 """
 import logging
 import time
@@ -61,7 +65,7 @@ def _rate_limited(chat_id: int) -> bool:
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
-def _is_authorized(chat_id) -> bool:
+def is_authorized(chat_id) -> bool:
     return bool(ALLOWED_CHAT_IDS) and chat_id in ALLOWED_CHAT_IDS
 
 
@@ -71,6 +75,23 @@ def _is_open_command(update: Update) -> bool:
     if not text.startswith("/"):
         return False
     return text.split()[0].split("@")[0] in _OPEN_COMMANDS
+
+
+def describe_update(update) -> str:
+    """Short label for the log: what the user pressed or which command they sent.
+
+    Deliberately excludes free-text message bodies — the log is a trace of what
+    the bot was asked to do, not a transcript of the chat.
+    """
+    if not isinstance(update, Update):
+        return "non-update"
+    if update.callback_query:
+        return f"button {update.callback_query.data!r}"
+    msg = update.effective_message
+    text = (msg.text or "").strip() if msg else ""
+    if text.startswith("/"):
+        return f"command {text.split()[0].split('@')[0]}"
+    return "message"
 
 
 async def _respond(update: Update, text: str, alert: str) -> None:
@@ -117,13 +138,14 @@ async def _deny(update: Update, chat_id) -> None:
 
 async def auth_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Run before every handler. Raising ApplicationHandlerStop drops the update."""
-    if _is_open_command(update):
-        return
-
     chat = update.effective_chat
     chat_id = chat.id if chat else None
 
-    if not _is_authorized(chat_id):
+    if _is_open_command(update):
+        logger.info("Handling %s from chat_id=%s", describe_update(update), chat_id)
+        return
+
+    if not is_authorized(chat_id):
         await _deny(update, chat_id)
         raise ApplicationHandlerStop
 
@@ -131,6 +153,10 @@ async def auth_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.warning("Rate limit hit for chat_id=%s", chat_id)
         await _respond(update, _BUSY_TEXT, _BUSY_ALERT)
         raise ApplicationHandlerStop
+
+    # The gate is the one place every accepted update passes through, so the
+    # trace lives here rather than in eleven separate handlers.
+    logger.info("Handling %s from chat_id=%s", describe_update(update), chat_id)
 
 
 # ── the decorator (second line of defense) ─────────────────────────────────────
@@ -140,7 +166,7 @@ def restricted(func):
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat = update.effective_chat
         chat_id = chat.id if chat else None
-        if not _is_authorized(chat_id):
+        if not is_authorized(chat_id):
             await _deny(update, chat_id)
             return
         return await func(update, context)

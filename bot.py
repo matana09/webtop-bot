@@ -20,7 +20,7 @@ from handlers.discipline import discipline_handler
 from handlers.grades import grades_handler
 from handlers.all_info import all_info_handler
 from handlers.debug import debug_handler
-from handlers.auth import auth_gate, restricted
+from handlers.auth import auth_gate, describe_update, is_authorized, restricted
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 # httpx logs full request URLs, which include the Telegram bot token in clear text.
 # Silence its INFO logs so the token never lands in log files.
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+_ERROR_TEXT = "⚠️ משהו השתבש. נסה שוב בעוד רגע."
+_ERROR_ALERT = "משהו השתבש, נסה שוב"
 
 
 async def post_init(app: Application):
@@ -43,6 +46,39 @@ async def post_init(app: Application):
 
 async def post_shutdown(app: Application):
     await webtop.close()
+
+
+async def error_handler(update, context):
+    """Log any exception a handler raised, and tell the user something broke.
+
+    Without this, a failing button leaves the user staring at a spinner that
+    never resolves and no indication of what went wrong.
+    """
+    logger.error(
+        "Handler failed on %s", describe_update(update), exc_info=context.error
+    )
+
+    if not isinstance(update, Update):
+        return
+
+    # Only ever answer a chat that is allowed to talk to the bot. auth_gate's
+    # own reply can raise (a transient RetryAfter, say), and that exception
+    # lands here — without this check the failure would be answered a second
+    # time, to an unknown sender, bypassing the _DENY_NOTICE_WINDOW throttle
+    # that exists so the bot cannot be used as an outbound-message amplifier.
+    chat = update.effective_chat
+    if not is_authorized(chat.id if chat else None):
+        return
+
+    # The notice is best-effort: the send can fail for the same reason the
+    # handler did, and a raise here would be swallowed anyway.
+    try:
+        if update.callback_query:
+            await update.callback_query.answer(_ERROR_ALERT, show_alert=True)
+        elif update.effective_message:
+            await update.effective_message.reply_text(_ERROR_TEXT)
+    except Exception:
+        logger.warning("Could not deliver the error notice to the user")
 
 
 def main():
@@ -137,6 +173,8 @@ def main():
     app.add_handler(CallbackQueryHandler(grades_handler, pattern="^grades$"))
     app.add_handler(CallbackQueryHandler(all_info_handler, pattern="^all$"))
     app.add_handler(CallbackQueryHandler(start_handler, pattern="^back$"))
+
+    app.add_error_handler(error_handler)
 
     # Poll for new homework / discipline every 10 minutes
     app.job_queue.run_repeating(check_notifications, interval=600, first=60)
