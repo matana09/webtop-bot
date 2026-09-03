@@ -28,6 +28,19 @@ BREAKS_AFTER: dict[int, list[tuple[str, str, str]]] = {
 
 FRIDAY_IDX = 6
 
+# Israeli school week: Sunday is day 1 … Saturday is day 7.
+SATURDAY_IDX = 7
+
+
+def israeli_day_index(day) -> int:
+    """datetime.date → Israeli day index (Sun=1 … Sat=7).
+
+    Python counts Mon=1…Sun=7, so this rotation is needed anywhere a date is
+    matched against the tables here or against Webtop's own dayIndex. It used
+    to be written out at each call site, once per file, in two directions.
+    """
+    return day.isoweekday() % 7 + 1
+
 # Friday is a short day in Israeli schools: the last lesson ends early and no
 # break follows it. Set to "" if your school runs Friday like any other day.
 FRIDAY_LAST_HOUR = 4

@@ -7,6 +7,7 @@ from handlers.menu import MAIN_MENU
 from webtop_service import webtop
 import schedule_overrides as _sched_overrides
 import schedule_times as _sched_times
+import vacations as _vacations
 import main_screen_state
 
 ISRAELI_DAYS = {
@@ -16,9 +17,33 @@ ISRAELI_DAYS = {
 _SKIP = {"הפסקה", ""}
 
 
-def _today_day_index() -> int:
-    iso = date.today().isoweekday()  # Mon=1…Sun=7
-    return iso % 7 + 1              # Sun→1, Mon→2…Fri→6
+def _off_day_text(day: date, when: str) -> str:
+    """The "no lessons" screen for a date, or "" when school is on.
+
+    Webtop returns an empty schedule both for a day off and for a day it
+    simply failed to load, so without this the two rendered identically — a
+    blank screen with nothing to say which had happened.
+    """
+    reason = _vacations.off_reason(day)
+    if not reason:
+        return ""
+
+    if not _vacations.vacation_for(day):
+        return f"✡️ <b>{when} {html.escape(reason)} — יום מנוחה 😊</b>"
+
+    date_str = html.escape(day.strftime("%d/%m/%Y"))
+    lines = [
+        f"🌴 <b>{when} {date_str} — {html.escape(reason)}</b>",
+        "אין לימודים 🎉",
+    ]
+    back = _vacations.next_school_day(day)
+    if back:
+        day_name = ISRAELI_DAYS.get(_sched_times.israeli_day_index(back), "")
+        lines.append(
+            f"\n🎓 חוזרים ללימודים ביום {html.escape(day_name)}, "
+            f"{html.escape(back.strftime('%d/%m/%Y'))}"
+        )
+    return "\n".join(lines)
 
 
 async def _lessons_for_day(day_idx: int) -> dict[int, tuple[str, str, str]]:
@@ -87,10 +112,13 @@ def _format_day(day_idx: int, hour_lessons: dict[int, tuple[str, str, str]],
 
 
 async def _today_schedule_text() -> str:
-    today_idx = _today_day_index()
-    if today_idx == 7:
-        return ""
     today = date.today()
+
+    off = _off_day_text(today, "היום")
+    if off:
+        return off
+
+    today_idx = _sched_times.israeli_day_index(today)
     title = (f"🗓️ <b>היום {html.escape(today.strftime('%d/%m/%Y'))} — "
              f"יום {html.escape(ISRAELI_DAYS.get(today_idx, ''))}</b>")
     return _format_day(today_idx, await _lessons_for_day(today_idx), title, "סיום היום")
@@ -98,12 +126,13 @@ async def _today_schedule_text() -> str:
 
 async def _tomorrow_schedule_text() -> str:
     """Formatted schedule for tomorrow (used in the 19:00 evening message)."""
-    tomorrow     = date.today() + timedelta(days=1)
-    tomorrow_idx = tomorrow.isoweekday() % 7 + 1   # Sun=1…Fri=6, Sat=7
+    tomorrow = date.today() + timedelta(days=1)
 
-    if tomorrow_idx == 7:
-        return "✡️ <b>מחר שבת — יום מנוחה 😊</b>"
+    off = _off_day_text(tomorrow, "מחר")
+    if off:
+        return off
 
+    tomorrow_idx = _sched_times.israeli_day_index(tomorrow)
     title = (f"🗓️ <b>מחר {html.escape(tomorrow.strftime('%d/%m/%Y'))} — "
              f"יום {html.escape(ISRAELI_DAYS.get(tomorrow_idx, ''))}</b>")
     return _format_day(tomorrow_idx, await _lessons_for_day(tomorrow_idx), title, "סיום מחר")

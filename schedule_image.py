@@ -32,6 +32,8 @@ _C_TEACHER   = (90,  105, 130)
 _C_TOPIC     = (70,  95,  140)
 _C_EMPTY     = (200, 210, 225)
 _C_TIME      = (70,  90,  130)
+_C_OFF_BG    = (255, 244, 224)   # vacation column — warm, clearly not a lesson
+_C_OFF_FG    = (170, 110, 30)
 
 # Layout (px)
 _HOUR_W   = 90   # wider to fit times
@@ -74,7 +76,15 @@ def _wrap(text: str, max_chars: int) -> list[str]:
 
 # ── public API ────────────────────────────────────────────────────────────────
 
-def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes | None:
+def generate_schedule_image(data: Any, week_label: str = "השבוע",
+                            off_days: dict[int, str] | None = None) -> bytes | None:
+    """Draw the week. `off_days` maps day_idx → vacation label for this week.
+
+    The caller resolves the dates, because the schedule payload carries a
+    dayIndex but not the date it fell on — only the week offset the caller
+    asked for can turn one into the other.
+    """
+    off_days = off_days or {}
     days_raw = (data.get("data") or []) if isinstance(data, dict) else []
 
     # Build matrix: hour_num -> day_idx -> (subject, teacher, topic)
@@ -104,6 +114,11 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes 
                 break
 
     _apply_overrides(matrix, day_indices)
+
+    # A vacation day is often missing from the payload entirely. Keep its
+    # column so the week reads as six days with two struck out, rather than
+    # as a four-day week with no explanation.
+    day_indices.update(d for d in off_days if d in _DAY_LABELS)
 
     # RTL layout: days sorted descending → ו׳ leftmost, א׳ rightmost (before hour col)
     # Hour column on the RIGHT (x = n_days * _DAY_W)
@@ -188,6 +203,20 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes 
 
             if i > 0:
                 draw.line([x, y, x, y + _ROW_H], fill=_C_BORDER, width=1)
+
+            # A day off overrides whatever the API still had for it
+            off_label = off_days.get(d)
+            if off_label:
+                draw.rectangle([x + 1, y + 1, x + _DAY_W - 1, y + _ROW_H - 1],
+                               fill=_C_OFF_BG)
+                stack = [(ln, f_topic, _C_OFF_FG, 15) for ln in _wrap(off_label, 12)]
+                block_h = sum(lh for *_, lh in stack)
+                ty = y + (_ROW_H - block_h) // 2
+                for text, font, colour, lh in stack:
+                    draw.text((cx, ty + lh // 2), _rtl(text),
+                              fill=colour, font=font, anchor="mm")
+                    ty += lh
+                continue
 
             # Friday's last lesson ends early — say so instead of naming the teacher
             friday_note = (d == _sched_times.FRIDAY_IDX

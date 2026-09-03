@@ -18,6 +18,9 @@ file that is never committed.
 - 🗓️ **Schedule** — daily and weekly views, rendered as an image
 - 📚 **Homework** — browse day by day, moves between weeks automatically
 - 📊 **Grades**, 📋 **discipline events**, 📬 **school messages**
+- 🌴 **Vacations & holidays** — your school's calendar, entered once in
+  `vacations.py`: days off are named on the daily screens, struck through on
+  the weekly image, and the 17:00/19:00 messages go quiet for the break
 - 🔔 **Notifications** — polls every 10 minutes for anything new
 - 🕔 **Daily summary** at 17:00, **tomorrow's schedule** at 19:00
 
@@ -127,6 +130,7 @@ On Windows you can install it as a background task that starts at login:
 | `/start` | Main menu with today's schedule |
 | `/summary` | Today's summary right now |
 | `/testschedule` | Tomorrow's schedule right now |
+| `/vacations` | Upcoming vacations, and whether today is one |
 | `/myid` | Show your chat ID (for setup) |
 | `/clear` | Delete the bot's messages from the chat |
 | `/0` | Reconnect to Webtop |

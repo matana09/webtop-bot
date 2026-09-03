@@ -1,16 +1,28 @@
 import io
+from datetime import date, timedelta
 from telegram import Update, InputMediaPhoto
 from telegram.ext import ContextTypes
 from handlers.auth import restricted
 from handlers.menu import SCHEDULE_NAV, BACK_MENU
 from webtop_service import webtop
 from formatters import format_schedule_classic
+import vacations as _vacations
 
 try:
     from schedule_image import generate_schedule_image
     _IMAGE_SUPPORT = True
 except ImportError:
     _IMAGE_SUPPORT = False
+
+
+def _week_sunday(week_index: int) -> date:
+    """The Sunday that opens the week `week_index` weeks from this one.
+
+    The Israeli school week runs Sunday–Friday, and Saturday belongs to the
+    week that has just ended, which is exactly what `isoweekday() % 7` gives.
+    """
+    today = date.today()
+    return today - timedelta(days=today.isoweekday() % 7) + timedelta(weeks=week_index)
 
 
 @restricted
@@ -44,7 +56,9 @@ async def schedule_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # The manual timetable alone is enough to draw the image — Webtop blocks
         # the schedule view between school years and then returns status=false.
-        img_bytes = (generate_schedule_image(data, week_label=week_label)
+        off_days  = _vacations.week_off_days(_week_sunday(week_index))
+        img_bytes = (generate_schedule_image(data, week_label=week_label,
+                                             off_days=off_days)
                      if _IMAGE_SUPPORT else None)
 
         if img_bytes:

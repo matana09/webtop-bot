@@ -10,6 +10,7 @@ from telegram.ext import ContextTypes
 
 from config import ALLOWED_CHAT_IDS
 from webtop_service import webtop
+import vacations
 import main_screen_state
 
 logger = logging.getLogger(__name__)
@@ -279,8 +280,12 @@ async def _build_daily_summary() -> str:
 
 
 async def send_daily_summary(context: ContextTypes.DEFAULT_TYPE):
-    """Send today's summary at 17:00 (Sun–Fri)."""
-    if _date.today().isoweekday() == 6:  # Saturday — skip
+    """Send today's summary at 17:00, on teaching days only.
+
+    Summarising a day with no lessons produced a message whose whole content
+    was "no homework today" — so Shabbat and every vacation day are skipped.
+    """
+    if not vacations.is_school_day(_date.today()):
         return
     text = await _build_daily_summary()
     for chat_id in ALLOWED_CHAT_IDS:
@@ -302,9 +307,17 @@ async def _build_evening_start_screen() -> str:
 async def send_evening_schedule(context: ContextTypes.DEFAULT_TYPE):
     """At 19:00 send full start screen — appears after the 17:00 daily summary."""
     from handlers.menu import MAIN_MENU
-    today = _date.today()
-    if today.isoweekday() == 5:  # Friday — tomorrow is Shabbat, skip
-        return
+    today    = _date.today()
+    tomorrow = today + timedelta(days=1)
+
+    if not vacations.is_school_day(tomorrow):
+        # Announce a vacation once, on the last teaching day before it, so a
+        # two-week break does not send the same notice fourteen times. The
+        # ordinary weekly rest day is never announced — that was already the
+        # rule for Friday evenings and it needs no reminder.
+        starts_tomorrow = vacations.vacation_for(tomorrow) and vacations.is_school_day(today)
+        if not starts_tomorrow:
+            return
     text = await _build_evening_start_screen()
     for chat_id in ALLOWED_CHAT_IDS:
         try:

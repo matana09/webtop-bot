@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -21,6 +22,7 @@ from handlers.grades import grades_handler
 from handlers.all_info import all_info_handler
 from handlers.debug import debug_handler
 from handlers.auth import auth_gate, describe_update, is_authorized, restricted
+import vacations
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -141,6 +143,32 @@ def main():
         await start_handler(update, context)
 
     @restricted
+    async def vacations_handler(update, context):
+        """List the vacations still ahead, and say whether today is one."""
+        today = date.today()
+        lines = ["🌴 <b>חופשות וחגים</b>\n"]
+
+        reason = vacations.off_reason(today)
+        if reason:
+            lines.append(f"היום — <b>{reason}</b>, אין לימודים.")
+            back = vacations.next_school_day(today)
+            if back:
+                lines.append(f"חוזרים ללימודים ב-{back.strftime('%d/%m/%Y')}.")
+            lines.append("")
+
+        ahead = vacations.upcoming(today)
+        if ahead:
+            lines.append("<b>הבאות בתור:</b>")
+            lines += [f"• {vacations.describe(*r)}" for r in ahead]
+        else:
+            lines.append(
+                "לא הוגדרו חופשות. הוסף אותן ב-<code>vacations.py</code> "
+                "מתוך לוח החופשות שבית הספר פרסם."
+            )
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+    @restricted
     async def summary_handler(update, context):
         msg = await update.message.reply_text("⏳ מכין סיכום יום...")
         text = await _build_daily_summary()
@@ -164,6 +192,7 @@ def main():
     app.add_handler(CommandHandler("clear", clear_handler))
     app.add_handler(CommandHandler("summary", summary_handler))
     app.add_handler(CommandHandler("testschedule", testschedule_handler))
+    app.add_handler(CommandHandler("vacations", vacations_handler))
 
     app.add_handler(CallbackQueryHandler(schedule_handler, pattern=r"^schedule:"))
     app.add_handler(CallbackQueryHandler(homework_handler, pattern=r"^homework:"))
