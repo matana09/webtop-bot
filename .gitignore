@@ -12,6 +12,7 @@ test_login.py
 
 # Tooling / local editor state
 .claude/
+HANDOFF.md
 __pycache__/
 *.pyc
 *.pyo
