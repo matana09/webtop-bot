@@ -12,7 +12,7 @@ if (-not (Test-Path $logsDir)) {
 }
 
 # Register Task Scheduler job
-$taskName = "WebtopTelegramBot"
+$taskName = "WebtopBot"
 
 # Remove old task if exists
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue

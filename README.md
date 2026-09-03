@@ -29,6 +29,8 @@ file that is never committed.
 
 ## Setup
 
+> מדריך התקנה מפורט בעברית: [INSTALL.he.md](INSTALL.he.md)
+
 **1. Install dependencies**
 
 ```bash
