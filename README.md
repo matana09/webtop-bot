@@ -32,7 +32,8 @@ file that is never committed.
 
 ## Setup
 
-> מדריך התקנה מפורט בעברית: [INSTALL.he.md](INSTALL.he.md)
+> מדריך התקנה מפורט בעברית: [INSTALL.he.md](INSTALL.he.md) —
+> וגם כ-PDF להדפסה: [install-guide-he.pdf](install-guide-he.pdf)
 
 **1. Install dependencies**
 
