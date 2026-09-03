@@ -77,8 +77,8 @@ def _wrap(text: str, max_chars: int) -> list[str]:
 def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes | None:
     days_raw = (data.get("data") or []) if isinstance(data, dict) else []
 
-    # Build matrix: hour_num -> day_idx -> (subject, teacher)
-    matrix: dict[int, dict[int, tuple[str, str]]] = {}
+    # Build matrix: hour_num -> day_idx -> (subject, teacher, topic)
+    matrix: dict[int, dict[int, tuple[str, str, str]]] = {}
     day_indices: set[int] = set()
 
     for day in days_raw:
@@ -97,7 +97,10 @@ def generate_schedule_image(data: Any, week_label: str = "השבוע") -> bytes 
                 first   = lesson.get("teacherPrivateName") or ""
                 last    = lesson.get("teacherLastName")    or ""
                 teacher = f"{first} {last}".strip()
-                matrix.setdefault(hour, {})[day_idx] = (subject, teacher)
+                # Third slot is the unit topic, which only the manual sheet
+                # supplies. It has to be present all the same: the renderer
+                # unpacks three values, and schedule_overrides pads to three.
+                matrix.setdefault(hour, {})[day_idx] = (subject, teacher, "")
                 break
 
     _apply_overrides(matrix, day_indices)
